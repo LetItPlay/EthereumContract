@@ -81,13 +81,13 @@ contract LetItPlayToken is Crowdsaled, StandardToken {
           releasedForTransfer = true;
         }
 
-        //forbind transfer before release
+        //forbid transfer before release
         function transfer(address _to, uint256 _value) public returns (bool) {
           require(releasedForTransfer);
           return super.transfer(_to, _value);
         }
 
-        //forbind transfer before release
+        //forbid transfer before release
         function transferFrom(address _from, address _to, uint256 _value) public returns (bool) {
            require(releasedForTransfer);
            return super.transferFrom(_from, _to, _value);
