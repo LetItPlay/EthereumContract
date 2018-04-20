@@ -7,6 +7,48 @@ contract ERC20Basic {
   event Transfer(address indexed from, address indexed to, uint256 value);
 }
 
+library SafeMath {
+
+  /**
+  * @dev Multiplies two numbers, throws on overflow.
+  */
+  function mul(uint256 a, uint256 b) internal pure returns (uint256) {
+    if (a == 0) {
+      return 0;
+    }
+    uint256 c = a * b;
+    assert(c / a == b);
+    return c;
+  }
+
+  /**
+  * @dev Integer division of two numbers, truncating the quotient.
+  */
+  function div(uint256 a, uint256 b) internal pure returns (uint256) {
+    // assert(b > 0); // Solidity automatically throws when dividing by 0
+    uint256 c = a / b;
+    // assert(a == b * c + a % b); // There is no case in which this doesn't hold
+    return c;
+  }
+
+  /**
+  * @dev Subtracts two numbers, throws on overflow (i.e. if subtrahend is greater than minuend).
+  */
+  function sub(uint256 a, uint256 b) internal pure returns (uint256) {
+    assert(b <= a);
+    return a - b;
+  }
+
+  /**
+  * @dev Adds two numbers, throws on overflow.
+  */
+  function add(uint256 a, uint256 b) internal pure returns (uint256) {
+    uint256 c = a + b;
+    assert(c >= a);
+    return c;
+  }
+}
+
 contract ERC20 is ERC20Basic {
   function allowance(address owner, address spender) public view returns (uint256);
   function transferFrom(address from, address to, uint256 value) public returns (bool);
@@ -14,17 +56,130 @@ contract ERC20 is ERC20Basic {
   event Approval(address indexed owner, address indexed spender, uint256 value);
 }
 
-contract HasManager {
-  address public manager;
+contract Ownable {
+  address public owner;
 
-  modifier onlyManager {
-    require(msg.sender == manager);
+
+  event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
+
+
+  /**
+   * @dev The Ownable constructor sets the original `owner` of the contract to the sender
+   * account.
+   */
+  function Ownable() public {
+    owner = msg.sender;
+  }
+
+  /**
+   * @dev Throws if called by any account other than the owner.
+   */
+  modifier onlyOwner() {
+    require(msg.sender == owner);
     _;
   }
 
-  function transferManager(address _newManager) public onlyManager() {
-    require(_newManager != address(0));
-    manager = _newManager;
+  /**
+   * @dev Allows the current owner to transfer control of the contract to a newOwner.
+   * @param newOwner The address to transfer ownership to.
+   */
+  function transferOwnership(address newOwner) public onlyOwner {
+    require(newOwner != address(0));
+    emit OwnershipTransferred(owner, newOwner);
+    owner = newOwner;
+  }
+
+}
+
+contract Crowdsaled is Ownable {
+        address public crowdsaleContract = address(0);
+        function Crowdsaled() public {
+        }
+
+        modifier onlyCrowdsale{
+          require(msg.sender == crowdsaleContract);
+          _;
+        }
+
+        modifier onlyCrowdsaleOrOwner {
+          require((msg.sender == crowdsaleContract) || (msg.sender == owner));
+          _;
+        }
+
+        function setCrowdsale(address crowdsale) public onlyOwner() {
+                crowdsaleContract = crowdsale;
+        }
+}
+
+contract WithBonusPeriods is Ownable {
+  uint256 constant INVALID_FROM_TIMESTAMP = 1000000000000;
+  uint256 constant INFINITY_TO_TIMESTAMP= 1000000000000;
+  struct BonusPeriod {
+    uint256 fromTimestamp;
+    uint256 toTimestamp;
+    uint256 bonusNumerator;
+    uint256 bonusDenominator;
+  }
+
+  BonusPeriod[] public bonusPeriods;
+  BonusPeriod currentBonusPeriod;
+
+  function WithBonusPeriods() public {
+      initBonuses();
+  }
+
+  function BonusPeriodsCount() public view returns (uint8) {
+    return uint8(bonusPeriods.length);
+  }
+
+  //find out bonus for specific timestamp
+  function BonusPeriodFor(uint256 timestamp) public view returns (bool ongoing, uint256 from, uint256 to, uint256 num, uint256 den) {
+    for(uint i = 0; i < bonusPeriods.length; i++)
+      if (bonusPeriods[i].fromTimestamp <= timestamp && bonusPeriods[i].toTimestamp >= timestamp)
+        return (true, bonusPeriods[i].fromTimestamp, bonusPeriods[i].toTimestamp, bonusPeriods[i].bonusNumerator,
+          bonusPeriods[i].bonusDenominator);
+    return (false, 0, 0, 0, 0);
+  }
+
+  function initBonusPeriod(uint256 from, uint256 to, uint256 num, uint256 den) internal  {
+    bonusPeriods.push(BonusPeriod(from, to, num, den));
+  }
+
+  function initBonuses() internal {
+      //1-7 May, 20%
+      initBonusPeriod(1525132800, 1525737599, 20, 100);
+      //8-14 May, 15%
+      initBonusPeriod(1525737600, 1526342399, 15, 100);
+      //15 -21 May, 10%
+      initBonusPeriod(1526342400, 1526947199, 10, 100);
+      //22 -28 May, 5%
+      initBonusPeriod(1526947200, 1527551999, 5, 100);
+  }
+
+  function updateCurrentBonusPeriod() internal  {
+    if (currentBonusPeriod.fromTimestamp <= block.timestamp
+      && currentBonusPeriod.toTimestamp >= block.timestamp)
+      return;
+
+    currentBonusPeriod.fromTimestamp = INVALID_FROM_TIMESTAMP;
+
+    for(uint i = 0; i < bonusPeriods.length; i++)
+      if (bonusPeriods[i].fromTimestamp <= block.timestamp && bonusPeriods[i].toTimestamp >= block.timestamp) {
+        currentBonusPeriod = bonusPeriods[i];
+        return;
+      }
+  }
+}
+
+contract Whitelist is Ownable {
+  mapping(address => bool) public whitelist;
+  function AddToWhiteList(address _addr) public onlyOwner {
+      whitelist[_addr] = true;
+  }
+
+  modifier whitelistedOnly {
+    require(whitelist[msg.sender]);
+    _;
   }
 }
 
@@ -157,170 +312,111 @@ contract StandardToken is ERC20, BasicToken {
 
 }
 
-library SafeMath {
+contract LetItPlayToken is Crowdsaled, StandardToken {
+        uint256 public totalSupply;
+        string public name;
+        string public symbol;
+        uint8 public decimals;
 
-  /**
-  * @dev Multiplies two numbers, throws on overflow.
-  */
-  function mul(uint256 a, uint256 b) internal pure returns (uint256) {
-    if (a == 0) {
-      return 0;
-    }
-    uint256 c = a * b;
-    assert(c / a == b);
-    return c;
-  }
+        address public forSale;
+        address public preSale;
+        address public ecoSystemFund;
+        address public founders;
+        address public team;
+        address public advisers;
+        address public bounty;
+        address public eosShareDrop;
 
-  /**
-  * @dev Integer division of two numbers, truncating the quotient.
-  */
-  function div(uint256 a, uint256 b) internal pure returns (uint256) {
-    // assert(b > 0); // Solidity automatically throws when dividing by 0
-    uint256 c = a / b;
-    // assert(a == b * c + a % b); // There is no case in which this doesn't hold
-    return c;
-  }
+        bool releasedForTransfer;
 
-  /**
-  * @dev Subtracts two numbers, throws on overflow (i.e. if subtrahend is greater than minuend).
-  */
-  function sub(uint256 a, uint256 b) internal pure returns (uint256) {
-    assert(b <= a);
-    return a - b;
-  }
+        uint256 private shift;
 
-  /**
-  * @dev Adds two numbers, throws on overflow.
-  */
-  function add(uint256 a, uint256 b) internal pure returns (uint256) {
-    uint256 c = a + b;
-    assert(c >= a);
-    return c;
-  }
+        function LetItPlayToken(
+            address _forSale,
+            address _ecoSystemFund,
+            address _founders,
+            address _team,
+            address _advisers,
+            address _bounty,
+            address _preSale,
+            address _eosShareDrop
+          ) public {
+          name = "LetItPlayToken";
+          symbol = "PLAY";
+          decimals = 8;
+          shift = uint256(10)**decimals;
+          totalSupply = 1000000000 * shift;
+          forSale = _forSale;
+          ecoSystemFund = _ecoSystemFund;
+          founders = _founders;
+          team = _team;
+          advisers = _advisers;
+          bounty = _bounty;
+          eosShareDrop = _eosShareDrop;
+          preSale = _preSale;
+
+          balances[forSale] = totalSupply * 59 / 100;
+          balances[ecoSystemFund] = totalSupply * 15 / 100;
+          balances[founders] = totalSupply * 15 / 100;
+          balances[team] = totalSupply * 5 / 100;
+          balances[advisers] = totalSupply * 3 / 100;
+          balances[bounty] = totalSupply * 1 / 100;
+          balances[preSale] = totalSupply * 1 / 100;
+          balances[eosShareDrop] = totalSupply * 1 / 100;
+        }
+
+        function transferByOwner(address from, address to, uint256 value) public onlyOwner {
+          require(balances[from] >= value);
+          balances[from] = balances[from].sub(value);
+          balances[to] = balances[to].add(value);
+          emit Transfer(from, to, value);
+        }
+
+        function transferByCrowdsale(address to, uint256 value) public onlyCrowdsale {
+          require(balances[forSale] >= value);
+          balances[forSale] = balances[forSale].sub(value);
+          balances[to] = balances[to].add(value);
+          emit Transfer(forSale, to, value);
+        }
+
+        function transferFromByCrowdsale(address _from, address _to, uint256 _value) public onlyCrowdsale returns (bool) {
+            return super.transferFrom(_from, _to, _value);
+        }
+
+        function releaseForTransfer() public onlyCrowdsaleOrOwner {
+          require(!releasedForTransfer);
+          releasedForTransfer = true;
+        }
+
+        function transfer(address _to, uint256 _value) public returns (bool) {
+          require(releasedForTransfer);
+          return super.transfer(_to, _value);
+        }
+
+        function transferFrom(address _from, address _to, uint256 _value) public returns (bool) {
+           require(releasedForTransfer);
+           return super.transferFrom(_from, _to, _value);
+        }
+
+        function burn(uint256 value) public  onlyOwner {
+            require(value <= balances[msg.sender]);
+            balances[msg.sender] = balances[msg.sender].sub(value);
+            balances[address(0)] = balances[address(0)].add(value);
+            emit Transfer(msg.sender, address(0), value);
+        }
 }
 
-contract Ownable {
-  address public owner;
+contract HasManager {
+  address public manager;
 
-
-  event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
-
-
-  /**
-   * @dev The Ownable constructor sets the original `owner` of the contract to the sender
-   * account.
-   */
-  function Ownable() public {
-    owner = msg.sender;
-  }
-
-  /**
-   * @dev Throws if called by any account other than the owner.
-   */
-  modifier onlyOwner() {
-    require(msg.sender == owner);
+  modifier onlyManager {
+    require(msg.sender == manager);
     _;
   }
 
-  /**
-   * @dev Allows the current owner to transfer control of the contract to a newOwner.
-   * @param newOwner The address to transfer ownership to.
-   */
-  function transferOwnership(address newOwner) public onlyOwner {
-    require(newOwner != address(0));
-    emit OwnershipTransferred(owner, newOwner);
-    owner = newOwner;
-  }
-
-}
-
-contract Crowdsaled is Ownable {
-        address public crowdsaleContract = address(0);
-        function Crowdsaled() public {
-        }
-
-        modifier onlyCrowdsale{
-          require(msg.sender == crowdsaleContract);
-          _;
-        }
-
-        modifier onlyCrowdsaleOrOwner {
-          require((msg.sender == crowdsaleContract) || (msg.sender == owner));
-          _;
-        }
-
-        function setCrowdsale(address crowdsale) public onlyOwner() {
-                crowdsaleContract = crowdsale;
-        }
-}
-
-contract WithBonusPeriods is Ownable {
-  event DEBUG(uint256 code);
-  uint256 constant INVALID_FROM_TIMESTAMP = 1000000000000;
-  uint256 constant INFINITY_TO_TIMESTAMP= 1000000000000;
-  struct BonusPeriod {
-    uint256 fromTimestamp;
-    uint256 toTimestamp;
-    uint256 bonusNumerator;
-    uint256 bonusDenominator;
-  }
-
-  BonusPeriod[] public bonusPeriods;
-  BonusPeriod currentBonusPeriod;
-
-  function WithBonusPeriods() public {
-      initBonuses();
-  }
-
-  function BonusPeriodsCount() public view returns (uint8) {
-    return uint8(bonusPeriods.length);
-  }
-
-  function BonusPeriodFor(uint256 timestamp) public view returns (bool ongoing, uint256 from, uint256 to, uint256 num, uint256 den) {
-    for(uint i = 0; i < bonusPeriods.length; i++)
-      if (bonusPeriods[i].fromTimestamp <= timestamp && bonusPeriods[i].toTimestamp >= timestamp)
-        return (true, bonusPeriods[i].fromTimestamp, bonusPeriods[i].toTimestamp, bonusPeriods[i].bonusNumerator,
-          bonusPeriods[i].bonusDenominator);
-    return (false, 0, 0, 0, 0);
-  }
-
-  /*function removeBonusPeriod(uint index) public onlyOwner {
-    require(index >=0 && bonusPeriods.length > index);
-    for(uint i = index + 1; i < bonusPeriods.length; i++)
-      bonusPeriods[i - 1] = bonusPeriods[i];
-    bonusPeriods.length--;
-  }
-
-  function addBonusPeriod(uint256 fromTimestamp, uint256 toTimestamp, uint bonusNumerator, uint bonusDenominator) public onlyOwner {
-      require(fromTimestamp <= toTimestamp);
-      require(bonusNumerator >= 0 && bonusDenominator > 0);
-      require(bonusPeriods.length < 255);
-
-      bonusPeriods.push(BonusPeriod(fromTimestamp, toTimestamp, bonusNumerator, bonusDenominator));
-  }*/
-
-  function initBonusPeriod(uint256 from, uint256 to, uint256 num, uint256 den) internal  {
-    bonusPeriods.push(BonusPeriod(from, to, num, den));
-  }
-
-  function initBonuses() internal {
-    //test bonuses, real ones will be added later here
-      initBonusPeriod(block.timestamp, block.timestamp + 3600 * 24, 3, 10);
-      initBonusPeriod(block.timestamp + 3600 * 24 + 1, block.timestamp + 3600 * 48, 1, 10);
-  }
-
-  function updateCurrentBonusPeriod() internal  {
-    if (currentBonusPeriod.fromTimestamp <= block.timestamp
-      && currentBonusPeriod.toTimestamp >= block.timestamp)
-      return;
-
-    currentBonusPeriod.fromTimestamp = INVALID_FROM_TIMESTAMP;
-
-    for(uint i = 0; i < bonusPeriods.length; i++)
-      if (bonusPeriods[i].fromTimestamp <= block.timestamp && bonusPeriods[i].toTimestamp >= block.timestamp) {
-        currentBonusPeriod = bonusPeriods[i];
-        return;
-      }
+  function transferManager(address _newManager) public onlyManager() {
+    require(_newManager != address(0));
+    manager = _newManager;
   }
 }
 
@@ -494,7 +590,7 @@ contract BasicCrowdsale is ICrowdsaleProcessor {
     duration = _endTimestamp - _startTimestamp;
 
     // duration must fit constraints
-    require(duration >= MIN_CROWDSALE_TIME && duration <= MAX_CROWDSALE_TIME);
+    //require(duration >= MIN_CROWDSALE_TIME && duration <= MAX_CROWDSALE_TIME);
 
     startTimestamp = _startTimestamp;
     endTimestamp = _endTimestamp;
@@ -556,18 +652,6 @@ contract BasicCrowdsale is ICrowdsaleProcessor {
       // ...or the crowdfunding period is over, but the minimum has been reached
       (block.timestamp >= endTimestamp && totalCollected >= minimalGoal)
     );
-  }
-}
-
-contract Whitelist is Ownable {
-  mapping(address => bool) public whitelist;
-  function AddToWhiteList(address _addr) public onlyOwner {
-      whitelist[_addr] = true;
-  }
-
-  modifier whitelistedOnly {
-    require(whitelist[msg.sender]);
-    _;
   }
 }
 
@@ -671,6 +755,8 @@ contract Crowdsale is BasicCrowdsale, Whitelist, WithBonusPeriods {
     }
 
     uint256 tokensSold = _value * uint256(10)**token.decimals() / tokenRateWei;
+
+    //apply bonus period
     updateCurrentBonusPeriod();
     if (currentBonusPeriod.fromTimestamp != INVALID_FROM_TIMESTAMP)
       tokensSold += tokensSold * currentBonusPeriod.bonusNumerator / currentBonusPeriod.bonusDenominator;
@@ -712,92 +798,5 @@ contract Crowdsale is BasicCrowdsale, Whitelist, WithBonusPeriods {
     //this must be approved by investor
     token.transferFromByCrowdsale(msg.sender, token.forSale(), tokens);
   }
-}
-
-contract LetItPlayToken is Crowdsaled, StandardToken {
-        uint256 public totalSupply;
-        string public name;
-        string public symbol;
-        uint8 public decimals;
-
-        address public forSale;
-        address public preSale;
-        address public ecoSystemFund;
-        address public founders;
-        address public team;
-        address public advisers;
-        address public bounty;
-
-        bool releasedForTransfer;
-
-        uint256 private shift;
-
-        function LetItPlayToken(
-            address _forSale,
-            address _ecoSystemFund,
-            address _founders,
-            address _team,
-            address _advisers,
-            address _bounty,
-            address _preSale,
-            uint256 _preSaleTokens
-          ) public {
-          name = "LetItPlayToken";
-          symbol = "PLAY";
-          decimals = 8;
-          shift = uint256(10)**decimals;
-          totalSupply = 1000000000 * shift;
-          forSale = _forSale;
-          ecoSystemFund = _ecoSystemFund;
-          founders = _founders;
-          team = _team;
-          advisers = _advisers;
-          bounty = _bounty;
-          preSale = _preSale;
-
-          uint256 forSaleTokens = totalSupply * 60 / 100;
-          _preSaleTokens = _preSaleTokens * shift;
-
-          balances[forSale] = forSaleTokens - _preSaleTokens;
-          balances[preSale] = _preSaleTokens;
-          balances[ecoSystemFund] = totalSupply * 15 / 100;
-          balances[founders] = totalSupply * 15 / 100;
-          balances[team] = totalSupply * 5 / 100;
-          balances[advisers] = totalSupply * 3 / 100;
-          balances[bounty] = totalSupply * 2 / 100;
-        }
-
-        function transferByOwner(address from, address to, uint256 value) public onlyOwner {
-          require(balances[from] >= value);
-          balances[from] = balances[from].sub(value);
-          balances[to] = balances[to].add(value);
-          emit Transfer(from, to, value);
-        }
-
-        function transferByCrowdsale(address to, uint256 value) public onlyCrowdsale {
-          require(balances[forSale] >= value);
-          balances[forSale] = balances[forSale].sub(value);
-          balances[to] = balances[to].add(value);
-          emit Transfer(forSale, to, value);
-        }
-
-        function transferFromByCrowdsale(address _from, address _to, uint256 _value) public onlyCrowdsale returns (bool) {
-            return super.transferFrom(_from, _to, _value);
-        }
-
-        function releaseForTransfer() public onlyCrowdsaleOrOwner {
-          require(!releasedForTransfer);
-          releasedForTransfer = true;
-        }
-
-        function transfer(address _to, uint256 _value) public returns (bool) {
-          require(releasedForTransfer);
-          return super.transfer(_to, _value);
-        }
-
-        function transferFrom(address _from, address _to, uint256 _value) public returns (bool) {
-           require(releasedForTransfer);
-           return super.transferFrom(_from, _to, _value);
-        }
 }
 

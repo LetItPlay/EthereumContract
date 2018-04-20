@@ -1,5 +1,53 @@
 pragma solidity ^0.4.13;
 
+contract ERC20Basic {
+  function totalSupply() public view returns (uint256);
+  function balanceOf(address who) public view returns (uint256);
+  function transfer(address to, uint256 value) public returns (bool);
+  event Transfer(address indexed from, address indexed to, uint256 value);
+}
+
+contract BasicToken is ERC20Basic {
+  using SafeMath for uint256;
+
+  mapping(address => uint256) balances;
+
+  uint256 totalSupply_;
+
+  /**
+  * @dev total number of tokens in existence
+  */
+  function totalSupply() public view returns (uint256) {
+    return totalSupply_;
+  }
+
+  /**
+  * @dev transfer token for a specified address
+  * @param _to The address to transfer to.
+  * @param _value The amount to be transferred.
+  */
+  function transfer(address _to, uint256 _value) public returns (bool) {
+    require(_to != address(0));
+    require(_value <= balances[msg.sender]);
+
+    // SafeMath.sub will throw if there is not enough balance.
+    balances[msg.sender] = balances[msg.sender].sub(_value);
+    balances[_to] = balances[_to].add(_value);
+    emit Transfer(msg.sender, _to, _value);
+    return true;
+  }
+
+  /**
+  * @dev Gets the balance of the specified address.
+  * @param _owner The address to query the the balance of.
+  * @return An uint256 representing the amount owned by the passed address.
+  */
+  function balanceOf(address _owner) public view returns (uint256 balance) {
+    return balances[_owner];
+  }
+
+}
+
 library SafeMath {
 
   /**
@@ -42,59 +90,11 @@ library SafeMath {
   }
 }
 
-contract ERC20Basic {
-  function totalSupply() public view returns (uint256);
-  function balanceOf(address who) public view returns (uint256);
-  function transfer(address to, uint256 value) public returns (bool);
-  event Transfer(address indexed from, address indexed to, uint256 value);
-}
-
 contract ERC20 is ERC20Basic {
   function allowance(address owner, address spender) public view returns (uint256);
   function transferFrom(address from, address to, uint256 value) public returns (bool);
   function approve(address spender, uint256 value) public returns (bool);
   event Approval(address indexed owner, address indexed spender, uint256 value);
-}
-
-contract BasicToken is ERC20Basic {
-  using SafeMath for uint256;
-
-  mapping(address => uint256) balances;
-
-  uint256 totalSupply_;
-
-  /**
-  * @dev total number of tokens in existence
-  */
-  function totalSupply() public view returns (uint256) {
-    return totalSupply_;
-  }
-
-  /**
-  * @dev transfer token for a specified address
-  * @param _to The address to transfer to.
-  * @param _value The amount to be transferred.
-  */
-  function transfer(address _to, uint256 _value) public returns (bool) {
-    require(_to != address(0));
-    require(_value <= balances[msg.sender]);
-
-    // SafeMath.sub will throw if there is not enough balance.
-    balances[msg.sender] = balances[msg.sender].sub(_value);
-    balances[_to] = balances[_to].add(_value);
-    emit Transfer(msg.sender, _to, _value);
-    return true;
-  }
-
-  /**
-  * @dev Gets the balance of the specified address.
-  * @param _owner The address to query the the balance of.
-  * @return An uint256 representing the amount owned by the passed address.
-  */
-  function balanceOf(address _owner) public view returns (uint256 balance) {
-    return balances[_owner];
-  }
-
 }
 
 contract StandardToken is ERC20, BasicToken {
@@ -253,6 +253,7 @@ contract LetItPlayToken is Crowdsaled, StandardToken {
         address public team;
         address public advisers;
         address public bounty;
+        address public eosShareDrop;
 
         bool releasedForTransfer;
 
@@ -266,7 +267,7 @@ contract LetItPlayToken is Crowdsaled, StandardToken {
             address _advisers,
             address _bounty,
             address _preSale,
-            uint256 _preSaleTokens
+            address _eosShareDrop
           ) public {
           name = "LetItPlayToken";
           symbol = "PLAY";
@@ -279,18 +280,17 @@ contract LetItPlayToken is Crowdsaled, StandardToken {
           team = _team;
           advisers = _advisers;
           bounty = _bounty;
+          eosShareDrop = _eosShareDrop;
           preSale = _preSale;
 
-          uint256 forSaleTokens = totalSupply * 60 / 100;
-          _preSaleTokens = _preSaleTokens * shift;
-
-          balances[forSale] = forSaleTokens - _preSaleTokens;
-          balances[preSale] = _preSaleTokens;
+          balances[forSale] = totalSupply * 59 / 100;
           balances[ecoSystemFund] = totalSupply * 15 / 100;
           balances[founders] = totalSupply * 15 / 100;
           balances[team] = totalSupply * 5 / 100;
           balances[advisers] = totalSupply * 3 / 100;
-          balances[bounty] = totalSupply * 2 / 100;
+          balances[bounty] = totalSupply * 1 / 100;
+          balances[preSale] = totalSupply * 1 / 100;
+          balances[eosShareDrop] = totalSupply * 1 / 100;
         }
 
         function transferByOwner(address from, address to, uint256 value) public onlyOwner {
@@ -324,6 +324,13 @@ contract LetItPlayToken is Crowdsaled, StandardToken {
         function transferFrom(address _from, address _to, uint256 _value) public returns (bool) {
            require(releasedForTransfer);
            return super.transferFrom(_from, _to, _value);
+        }
+
+        function burn(uint256 value) public  onlyOwner {
+            require(value <= balances[msg.sender]);
+            balances[msg.sender] = balances[msg.sender].sub(value);
+            balances[address(0)] = balances[address(0)].add(value);
+            emit Transfer(msg.sender, address(0), value);
         }
 }
 
